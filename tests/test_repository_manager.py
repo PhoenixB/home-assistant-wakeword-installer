@@ -4,7 +4,7 @@ from __future__ import annotations
 import tempfile
 import zipfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -215,6 +215,11 @@ class TestInstallWakewords:
             executor_targets = [
                 call.args[0] for call in mock_hass.async_add_executor_job.call_args_list
             ]
+            assert any(
+                getattr(target, "func", None) is not None
+                and target.func.__name__ == "rmtree"
+                for target in executor_targets
+            )
             assert tempfile.mkdtemp in executor_targets
             assert captured and not Path(captured[0]).exists()
 
