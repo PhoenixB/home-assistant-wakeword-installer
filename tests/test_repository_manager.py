@@ -184,6 +184,40 @@ class TestInstallWakewords:
             assert "test-repo_en_hey_jarvis.tflite" in names
             assert "test-repo_de_hallo_jarvis.tflite" in names
 
+    async def test_temp_dir_handled_in_executor_and_cleaned_up(
+        self, repo_manager: RepositoryManager, mock_hass: MagicMock
+    ) -> None:
+        """Temp dir creation/removal must not block the event loop."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            install_path = Path(tmpdir) / "openwakeword"
+
+            zip_path = Path(tmpdir) / "repo.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                zf.writestr("repo-main/en/hey_jarvis.tflite", b"fake-model-en")
+
+            captured: list[str] = []
+
+            with (
+                patch("custom_components.wakeword_installer.repository_manager.WAKEWORD_INSTALL_PATH", str(install_path)),
+                patch.object(repo_manager, "_download_file", new_callable=AsyncMock) as mock_dl,
+            ):
+                async def fake_download(url, dest):
+                    import shutil
+                    captured.append(str(Path(dest).parent))
+                    shutil.copy2(zip_path, dest)
+
+                mock_dl.side_effect = fake_download
+
+                await repo_manager.install_wakewords(
+                    "https://github.com/test/wakewords", ["en"], "test-repo"
+                )
+
+            executor_targets = [
+                call.args[0] for call in mock_hass.async_add_executor_job.call_args_list
+            ]
+            assert tempfile.mkdtemp in executor_targets
+            assert captured and not Path(captured[0]).exists()
+
 
 @pytest.mark.asyncio
 class TestRemoveWakewords:
