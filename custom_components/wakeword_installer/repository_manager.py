@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+from functools import partial
 from pathlib import Path
 
 import aiofiles
@@ -86,13 +87,18 @@ class RepositoryManager:
 
             download_url = self._get_download_url(repo_url)
 
-            with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = await self.hass.async_add_executor_job(tempfile.mkdtemp)
+            try:
                 zip_path = Path(temp_dir) / "repo.zip"
 
                 await self._download_file(download_url, zip_path)
 
                 await self._extract_and_install(
                     zip_path, selected_languages, install_path, repo_name, temp_dir
+                )
+            finally:
+                await self.hass.async_add_executor_job(
+                    partial(shutil.rmtree, temp_dir, ignore_errors=True)
                 )
 
             _LOGGER.info(
